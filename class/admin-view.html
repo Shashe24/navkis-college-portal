@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin View</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>body { font-family: 'Inter', sans-serif; }</style>
+  <script>
+    function guard(){
+      try {
+        const role = localStorage.getItem('role');
+        if(role !== 'admin'){
+          window.location.replace('index.html');
+        }
+      } catch (e) {}
+    }
+
+    // Dynamic subjects configuration - can be modified per branch/year
+    let SUBJECTS = ['mathematics', 'english', 'science', 'history', 'geography'];
+    
+    // Store custom subjects for each branch/year combination
+    function getSubjectsKey(branch, year) {
+      return `subjects_${branch}_${year}`;
+    }
+    
+    function getSubjects(branch, year) {
+      const key = getSubjectsKey(branch, year);
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch (e) {
+          console.error('Error parsing stored subjects:', e);
+        }
+      }
+      return SUBJECTS; // Default subjects
+    }
+    
+    function saveSubjects(branch, year, subjects) {
+      const key = getSubjectsKey(branch, year);
+      localStorage.setItem(key, JSON.stringify(subjects));
+    }
+
+    const API_BASE = 'http://localhost:3001/api';
+    function storageKey(branch, year, batch){ return `admin_student_data_${branch}_${year}_${batch}`; }
+
+    function addRow(prefill){
+      const tbody = document.getElementById('results-body');
+      const row = document.createElement('tr');
+             row.className = 'hover:bg-blue-50 border-b-2 border-slate-200 transition-colors';
+      
+             const student = prefill || { student_name:'', student_id:'' };
+      const cells = [];
+      
+             // Basic student info
+       cells.push(`<td class="p-6 text-center"><input value="${student.student_name||''}" placeholder="Enter Student Name" class="w-full max-w-xs border-2 border-slate-300 rounded-xl px-4 py-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200" /></td>`);
+       cells.push(`<td class="p-6 text-center"><input value="${student.student_id||''}" placeholder="Enter Student ID" class="w-full max-w-xs border-2 border-slate-300 rounded-xl px-4 py-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-200" /></td>`);
+      
+             // Dynamic subject columns
+       const currentSubjects = getSubjects(document.getElementById('branch').value, document.getElementById('year').value);
+       currentSubjects.forEach(subject => {
+         const s = (student[subject] || {});
+         const iv = s.internal || '';
+         const ev = s.external || '';
+         cells.push(`<td class="p-4 text-center"><input type="number" min="0" max="50" value="${iv}" placeholder="Int" class="w-20 border-2 border-slate-300 rounded-lg px-3 py-2 text-center text-base focus:border-green-500 focus:ring-2 focus:ring-green-200" /></td>`);
+         cells.push(`<td class="p-4 text-center"><input type="number" min="0" max="50" value="${ev}" placeholder="Ext" class="w-20 border-2 border-slate-300 rounded-lg px-3 py-2 text-center text-base focus:border-green-500 focus:ring-2 focus:ring-green-200" /></td>`);
+       });
+      
+             cells.push(`<td class="p-6 text-center"><button type="button" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors" onclick="this.closest('tr').remove()">Remove</button></td>`);
+      row.innerHTML = cells.join('');
+      tbody.appendChild(row);
+    }
+
+    function toData(){
+      const rows = Array.from(document.querySelectorAll('#results-body tr'));
+      const currentSubjects = getSubjects(document.getElementById('branch').value, document.getElementById('year').value);
+      
+      return rows.map(tr=>{
+        const inputs = Array.from(tr.querySelectorAll('input'));
+        const [nameI, idI, ...marks] = inputs;
+        const entry = { 
+          student_name: nameI.value.trim(), 
+          student_id: idI.value.trim()
+        };
+        
+        currentSubjects.forEach((sub, idx)=>{
+          const internal = parseInt(marks[idx*2].value||'0',10);
+          const external = parseInt(marks[idx*2+1].value||'0',10);
+          entry[sub] = { internal, external };
+        });
+        return entry;
+      });
+    }
+
+    function saveData(){
+      const branch = document.getElementById('branch').value;
+      const year = document.getElementById('year').value;
+      const batch = document.getElementById('batch').value;
+      if(!branch || !year || !batch){ alert('Select branch, year, and batch'); return; }
+      const data = toData();
+      
+      try {
+        // Store in localStorage for student and HOD dashboards
+        const key = `admin_student_data_${branch}_${year}_${batch}`;
+        localStorage.setItem(key, JSON.stringify({ branch, year, batch, students: data }));
+        
+        const note = document.getElementById('admin-notice');
+        note.textContent = 'Data saved successfully! Student and HOD dashboards will now display this information.';
+        note.className = 'text-sm text-emerald-700';
+      } catch (e) { 
+        alert('Failed to save data'); 
+        console.error('Error saving:', e);
+      }
+    }
+
+    function loadData(){
+      const branch = document.getElementById('branch').value;
+      const year = document.getElementById('year').value;
+      const batch = document.getElementById('batch').value;
+      if(!branch || !year || !batch){ alert('Select branch, year, and batch'); return; }
+      
+      const key = `admin_student_data_${branch}_${year}_${batch}`;
+      const raw = localStorage.getItem(key);
+      
+      const tbody = document.getElementById('results-body');
+      tbody.innerHTML = '';
+      if(!raw){ addRow(); return; }
+      try {
+        const parsed = JSON.parse(raw);
+        (parsed.students||[]).forEach(s=> addRow(s));
+      } catch (e) { addRow(); }
+    }
+
+    function clearCurrent(){
+      const branch = document.getElementById('branch').value;
+      const year = document.getElementById('year').value;
+      const batch = document.getElementById('batch').value;
+      if(!branch || !year || !batch){ alert('Select branch, year, and batch'); return; }
+      if(!confirm('Clear all student details for the selected Branch/Year/Batch?')) return;
+      
+      const key = `admin_student_data_${branch}_${year}_${batch}`;
+      localStorage.removeItem(key);
+      
+      const tbody = document.getElementById('results-body');
+      tbody.innerHTML = '';
+      addRow();
+      const note = document.getElementById('admin-notice');
+      note.textContent = 'Cleared current context.';
+      note.className = 'text-sm text-rose-700';
+    }
+
+    function clearAll(){
+      if(!confirm('This will clear ALL saved student details across all branches/years/batches. Continue?')) return;
+      
+      // Clear all admin student data from localStorage
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('admin_student_data_')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      const tbody = document.getElementById('results-body');
+      tbody.innerHTML = '';
+      addRow();
+      const note = document.getElementById('admin-notice');
+      note.textContent = 'Cleared all saved results.';
+      note.className = 'text-sm text-rose-700';
+    }
+
+    function updateSubjectColumns() {
+      const branch = document.getElementById('branch').value;
+      const year = document.getElementById('year').value;
+      
+      if (!branch || !year) return;
+      
+      const currentSubjects = getSubjects(branch, year);
+      
+      // Update table headers
+      const thead = document.querySelector('#results-table thead');
+      if (thead) {
+        const headerRow = thead.querySelector('tr:first-child');
+        const subHeaderRow = thead.querySelector('tr:last-child');
+        
+                 // Clear existing subject columns (keep first 2: Name, ID)
+         const nameCell = headerRow.children[0];
+         const idCell = headerRow.children[1];
+         const actionCell = headerRow.children[headerRow.children.length - 1];
+         
+         headerRow.innerHTML = '';
+         headerRow.appendChild(nameCell);
+         headerRow.appendChild(idCell);
+        
+                 // Add dynamic subject columns
+         currentSubjects.forEach(subject => {
+           const th = document.createElement('th');
+           th.className = 'p-6 text-center font-bold';
+           th.setAttribute('colspan', '2');
+           th.textContent = subject.charAt(0).toUpperCase() + subject.slice(1);
+           headerRow.appendChild(th);
+         });
+        
+        headerRow.appendChild(actionCell);
+        
+                          // Update sub-header row
+         subHeaderRow.innerHTML = '';
+         const nameSubCell = document.createElement('th');
+         nameSubCell.className = 'p-4';
+         subHeaderRow.appendChild(nameSubCell);
+         
+         const idSubCell = document.createElement('th');
+         idSubCell.className = 'p-4';
+         subHeaderRow.appendChild(idSubCell);
+         
+         currentSubjects.forEach(subject => {
+           const th1 = document.createElement('th');
+           th1.className = 'p-4 text-center font-medium text-slate-600';
+           th1.textContent = 'Internal';
+           subHeaderRow.appendChild(th1);
+           
+           const th2 = document.createElement('th');
+           th2.className = 'p-4 text-center font-medium text-slate-600';
+           th2.textContent = 'External';
+           subHeaderRow.appendChild(th2);
+         });
+         
+         const actionSubCell = document.createElement('th');
+         actionSubCell.className = 'p-4';
+         subHeaderRow.appendChild(actionSubCell);
+      }
+      
+      // Clear and recreate table body
+      const tbody = document.getElementById('results-body');
+      tbody.innerHTML = '';
+      addRow();
+    }
+
+    function configureSubjects() {
+      const branch = document.getElementById('branch').value;
+      const year = document.getElementById('year').value;
+      
+      if (!branch || !year) {
+        alert('Please select branch and year first');
+        return;
+      }
+      
+      const currentSubjects = getSubjects(branch, year);
+      const subjectsInput = prompt(
+        'Enter subjects separated by commas (e.g., Mathematics, English, Physics, Chemistry):',
+        currentSubjects.join(', ')
+      );
+      
+      if (subjectsInput) {
+        const newSubjects = subjectsInput.split(',').map(s => s.trim().toLowerCase()).filter(s => s);
+        if (newSubjects.length > 0) {
+          saveSubjects(branch, year, newSubjects);
+          updateSubjectColumns();
+          alert(`Subjects updated for ${branch} - ${year}: ${newSubjects.join(', ')}`);
+        }
+      }
+    }
+
+         function importStudents(){
+       // Show the import section
+       document.getElementById('students-display-section').style.display = 'none';
+       document.getElementById('results-input-section').style.display = 'none';
+       document.getElementById('import-section').style.display = 'block';
+     }
+
+     function backToInputFromImport(){
+       // Show the input section
+       document.getElementById('import-section').style.display = 'none';
+       document.getElementById('results-input-section').style.display = 'block';
+     }
+
+           function downloadTemplate(){
+        const branch = document.getElementById('branch').value;
+        const year = document.getElementById('year').value;
+        
+        if (!branch || !year) {
+          alert('Please select branch and year first to generate template');
+          return;
+        }
+        
+        const currentSubjects = getSubjects(branch, year);
+        const subjectColumns = currentSubjects.map(subject => 
+          `${subject.charAt(0).toUpperCase() + subject.slice(1)} Internal,${subject.charAt(0).toUpperCase() + subject.slice(1)} External`
+        ).join(',');
+        
+                 const csvContent = `Student Name,Student ID,${subjectColumns}
+John Doe,STU001,${currentSubjects.map(() => '45,48').join(',')}
+Jane Smith,STU002,${currentSubjects.map(() => '42,45').join(',')}
+Mike Johnson,STU003,${currentSubjects.map(() => '48,50').join(',')}`;
+        
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `student_import_template_${branch}_${year}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      }
+
+     function handleFileImport(event){
+       const file = event.target.files[0];
+       if (!file) return;
+
+       const reader = new FileReader();
+       reader.onload = function(e) {
+         try {
+           const csvText = e.target.result;
+           const students = parseCSV(csvText);
+           
+           if (students.length > 0) {
+             // Clear current table and add imported students
+             const tbody = document.getElementById('results-body');
+             tbody.innerHTML = '';
+             
+             students.forEach(student => {
+               addRow(student);
+             });
+             
+             // Show success message
+             const note = document.getElementById('admin-notice');
+             note.textContent = `Successfully imported ${students.length} students! Review and save the data.`;
+             note.className = 'text-sm text-emerald-700';
+             
+             // Go back to input section
+             backToInputFromImport();
+           }
+         } catch (error) {
+           alert('Error importing file: ' + error.message);
+         }
+       };
+       reader.readAsText(file);
+     }
+
+           function parseCSV(csvText){
+        const lines = csvText.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim());
+        const students = [];
+        
+                 for (let i = 1; i < lines.length; i++) {
+           if (lines[i].trim() === '') continue;
+           
+           const values = lines[i].split(',').map(v => v.trim());
+           if (values.length < 2) continue; // At least name, ID
+           
+           const student = {
+             student_name: values[0] || '',
+             student_id: values[1] || ''
+           };
+          
+                     // Parse subject marks dynamically
+           const currentSubjects = getSubjects(document.getElementById('branch').value, document.getElementById('year').value);
+           currentSubjects.forEach((subject, idx) => {
+             const internalIdx = 2 + (idx * 2);
+             const externalIdx = 3 + (idx * 2);
+            
+            if (values[internalIdx] && values[externalIdx]) {
+              student[subject] = {
+                internal: parseInt(values[internalIdx]) || 0,
+                external: parseInt(values[externalIdx]) || 0
+              };
+            }
+          });
+          
+          students.push(student);
+        }
+        
+        return students;
+      }
+
+     function viewAllStudents(){
+       // Show the students display section
+       document.getElementById('students-display-section').style.display = 'block';
+       document.getElementById('results-input-section').style.display = 'none';
+       document.getElementById('import-section').style.display = 'none';
+       
+       // Load and display all students
+       loadAllStudentsData();
+     }
+
+     function backToInput(){
+       // Show the input section
+       document.getElementById('students-display-section').style.display = 'none';
+       document.getElementById('results-input-section').style.display = 'block';
+       document.getElementById('import-section').style.display = 'none';
+     }
+
+    // Store all students data globally for filtering
+    let allStudentsData = [];
+
+    function loadAllStudentsData(){
+      const container = document.getElementById('all-students-container');
+      if (!container) return;
+
+      // Get all admin student data
+      allStudentsData = [];
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('admin_student_data_')) {
+          try {
+            const data = JSON.parse(localStorage.getItem(key));
+            if (data && data.students) {
+              data.students.forEach(student => {
+                allStudentsData.push({
+                  ...student,
+                  branch: data.branch,
+                  year: data.year || data.semester, // Handle both year and semester
+                  batch: data.batch
+                });
+              });
+            }
+          } catch (e) {
+            console.error('Error parsing data:', e);
+          }
+        }
+      });
+
+      if (allStudentsData.length === 0) {
+        container.innerHTML = '<p class="text-slate-500 text-center py-8">No students found. Please add and save some student data first.</p>';
+        return;
+      }
+
+      // Display all students initially
+      displayStudents(allStudentsData);
+    }
+
+    function displayStudents(students) {
+      const container = document.getElementById('all-students-container');
+      if (!container) return;
+
+      if (students.length === 0) {
+        container.innerHTML = '<p class="text-slate-500 text-center py-8">No students match the current filters.</p>';
+        return;
+      }
+
+      // Display all students
+      container.innerHTML = students.map(student => {
+        const subjects = Object.keys(student).filter(key => 
+          !['student_name', 'student_id', 'branch', 'year', 'batch'].includes(key)
+         );
+         const subjectMarks = subjects.map(subject => {
+           const internal = parseInt(student[subject]?.internal || 0);
+           const external = parseInt(student[subject]?.external || 0);
+           const total = internal + external;
+           const passed = external > 17; // Student passes only if external marks > 17
+           return { subject, internal, external, total, passed };
+         });
+         
+         const totalScore = subjectMarks.reduce((sum, mark) => sum + mark.total, 0);
+         const overallPercentage = totalScore / (subjects.length * 100) * 100;
+         const passedSubjects = subjectMarks.filter(mark => mark.passed).length;
+         const failedSubjects = subjects.length - passedSubjects;
+
+        return `
+          <div class="bg-white rounded-lg border border-slate-200 p-6 hover:shadow-md transition-shadow">
+            <div class="flex justify-between items-start mb-4">
+              <div class="flex items-start gap-3">
+                <button onclick="deleteStudent('${student.student_id}', '${student.student_name}', '${student.branch}', '${student.year}', '${student.batch}')" 
+                        class="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-colors" 
+                        title="Delete Student">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                </button>
+                <div>
+                  <h3 class="font-semibold text-slate-900 text-lg">${student.student_name}</h3>
+                  <p class="text-sm text-slate-600">ID: ${student.student_id}</p>
+                  <p class="text-sm text-slate-500">${student.branch} • ${student.year} • ${student.batch}</p>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${failedSubjects > 0 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}">
+                  ${failedSubjects} Failed Subject${failedSubjects !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+            
+            <div class="grid grid-cols-4 gap-4 text-sm mb-4">
+              <div class="text-center p-3 bg-slate-50 rounded-lg">
+                <div class="text-slate-500 text-xs">Overall %</div>
+                <div class="font-bold text-slate-900 text-lg">${overallPercentage.toFixed(1)}%</div>
+              </div>
+              <div class="text-center p-3 bg-slate-50 rounded-lg">
+                <div class="text-slate-500 text-xs">Passed</div>
+                <div class="font-bold text-slate-900 text-lg">${passedSubjects}</div>
+              </div>
+              <div class="text-center p-3 bg-slate-50 rounded-lg">
+                <div class="text-slate-500 text-xs">Failed</div>
+                <div class="font-bold text-slate-900 text-lg">${failedSubjects}</div>
+              </div>
+                             <div class="text-center p-3 bg-slate-50 rounded-lg">
+                 <div class="text-slate-500 text-xs">Total Score</div>
+                 <div class="font-bold text-slate-900 text-lg">${totalScore}/${subjects.length * 100}</div>
+               </div>
+            </div>
+
+            <div class="mb-4">
+              <h4 class="text-sm font-semibold text-slate-700 mb-2">Subject-wise Marks</h4>
+              <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                ${subjectMarks.map(mark => `
+                  <div class="p-2 bg-slate-50 rounded text-center">
+                    <div class="font-medium text-slate-800">${mark.subject.charAt(0).toUpperCase() + mark.subject.slice(1)}</div>
+                    <div class="text-slate-600">Int: ${mark.internal}</div>
+                    <div class="text-slate-600">Ext: ${mark.external}</div>
+                    <div class="font-bold ${mark.passed ? 'text-green-600' : 'text-red-600'}">${mark.total}/100</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+         document.addEventListener('DOMContentLoaded', function(){
+       guard();
+       addRow();
+       
+       // Add event listeners for dynamic updates
+       document.getElementById('branch').addEventListener('change', updateSubjectColumns);
+       document.getElementById('year').addEventListener('change', updateSubjectColumns);
+     });
+
+     // Filtering functions for View All Students
+     function filterStudents() {
+       const branchFilter = document.getElementById('filter-branch').value;
+       const yearFilter = document.getElementById('filter-year').value;
+       const batchFilter = document.getElementById('filter-batch').value;
+       
+       let filteredStudents = allStudentsData.filter(student => {
+         const branchMatch = !branchFilter || student.branch === branchFilter;
+         const yearMatch = !yearFilter || student.year === yearFilter;
+         const batchMatch = !batchFilter || student.batch === batchFilter;
+         
+         return branchMatch && yearMatch && batchMatch;
+       });
+       
+       displayStudents(filteredStudents);
+       
+       // Update filter summary
+       updateFilterSummary(filteredStudents.length);
+     }
+     
+     function clearFilters() {
+       document.getElementById('filter-branch').value = '';
+       document.getElementById('filter-year').value = '';
+       document.getElementById('filter-batch').value = '';
+       
+       displayStudents(allStudentsData);
+       updateFilterSummary(allStudentsData.length);
+     }
+     
+     function updateFilterSummary(count) {
+       // Add or update filter summary
+       let summaryElement = document.getElementById('filter-summary');
+       if (!summaryElement) {
+         summaryElement = document.createElement('div');
+         summaryElement.id = 'filter-summary';
+         summaryElement.className = 'mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg';
+         document.querySelector('#students-display-section .bg-slate-50').appendChild(summaryElement);
+       }
+       
+       const branchFilter = document.getElementById('filter-branch').value;
+       const yearFilter = document.getElementById('filter-year').value;
+       const batchFilter = document.getElementById('filter-batch').value;
+       
+       let filterText = 'Showing all students';
+       if (branchFilter || yearFilter || batchFilter) {
+         const filters = [];
+         if (branchFilter) filters.push(`Branch: ${branchFilter}`);
+         if (yearFilter) filters.push(`Year: ${yearFilter}`);
+         if (batchFilter) filters.push(`Batch: ${batchFilter}`);
+         filterText = `Filtered by ${filters.join(', ')}`;
+       }
+       
+       summaryElement.innerHTML = `
+         <div class="flex items-center justify-between">
+           <span class="text-blue-800 text-sm font-medium">${filterText}</span>
+           <span class="text-blue-600 text-sm font-bold">${count} student${count !== 1 ? 's' : ''} found</span>
+         </div>
+       `;
+     }
+     
+     function deleteStudent(studentId, studentName, branch, year, batch) {
+       // Show confirmation dialog
+       const confirmed = confirm(`Are you sure you want to delete ${studentName} (ID: ${studentId})?\n\nThis action cannot be undone and will remove all marks and data for this student.`);
+       
+       if (!confirmed) {
+         return;
+       }
+       
+       try {
+         // Find the data key for this student
+         const dataKey = `admin_student_data_${branch}_${year}_${batch}`;
+         const adminData = JSON.parse(localStorage.getItem(dataKey) || '{}');
+         
+         if (adminData && adminData.students) {
+           // Remove the student from the array
+           adminData.students = adminData.students.filter(student => student.student_id !== studentId);
+           
+           // Update localStorage
+           if (adminData.students.length === 0) {
+             // If no students left, remove the entire entry
+             localStorage.removeItem(dataKey);
+           } else {
+             // Update with remaining students
+             localStorage.setItem(dataKey, JSON.stringify(adminData));
+           }
+           
+           // Update the global data array
+           allStudentsData = allStudentsData.filter(student => student.student_id !== studentId);
+           
+           // Refresh the display
+           displayStudents(allStudentsData);
+           updateFilterSummary(allStudentsData.length);
+           
+           // Show success message
+           alert(`Student ${studentName} has been successfully deleted from the database.`);
+           
+         } else {
+           alert('Student data not found in the database.');
+         }
+         
+       } catch (error) {
+         console.error('Error deleting student:', error);
+         alert('Error deleting student. Please try again.');
+       }
+     }
+  </script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+  <header class="bg-white border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+      <h1 class="text-xl font-bold text-slate-900">Admin Management</h1>
+      <div class="space-x-4 text-sm">
+        <a href="index.html" class="text-slate-600 hover:underline">Switch Role</a>
+        <a href="login-admin.html" class="text-blue-600 hover:underline">Logout</a>
+      </div>
+    </div>
+  </header>
+     <main class="max-w-full mx-auto px-4 md:px-8 py-8 space-y-6">
+     <!-- Results Input Section -->
+     <section id="results-input-section" class="bg-white rounded-2xl shadow-lg border border-slate-100 p-8">
+      <h2 class="text-slate-900 font-bold text-lg">Results Management</h2>
+      <p class="text-slate-600 text-sm mt-1">Enter internal/external marks per subject. Save to update dashboards.</p>
+      <div class="grid md:grid-cols-3 gap-4 mt-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Branch</label>
+                     <select id="branch" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+             <option value="">Select</option>
+             <option>ECE</option>
+             <option>CSE</option>
+             <option>EEE</option>
+             <option>MECH</option>
+             <option>CIVIL</option>
+             <option>AIML</option>
+             <option>AIDS</option>
+             <option>CSE Ethical Hacking</option>
+           </select>
+        </div>
+                 <div>
+           <label class="block text-sm font-medium text-slate-700">Year</label>
+           <select id="year" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+             <option value="">Select</option>
+             <option value="1st Year">1st Year</option>
+             <option value="2nd Year">2nd Year</option>
+             <option value="3rd Year">3rd Year</option>
+             <option value="4th Year">4th Year</option>
+           </select>
+         </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Batch</label>
+          <select id="batch" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+            <option value="">Select</option>
+            <option>2023-2027</option>
+            <option>2022-2026</option>
+            <option>2021-2025</option>
+          </select>
+        </div>
+      </div>
+             <div class="mt-4 flex flex-wrap gap-3">
+         <button type="button" onclick="addRow()" class="bg-blue-600 text-white text-sm rounded-lg px-3 py-2 hover:bg-blue-700">Add Student</button>
+         <button type="button" onclick="configureSubjects()" class="bg-amber-600 text-white text-sm rounded-lg px-3 py-2 hover:bg-amber-700">Configure Subjects</button>
+         <button type="button" onclick="importStudents()" class="bg-purple-600 text-white text-sm rounded-lg px-3 py-2 hover:bg-purple-700">Import Students</button>
+         <button type="button" onclick="saveData()" class="bg-emerald-600 text-white text-sm rounded-lg px-3 py-2 hover:bg-emerald-700">Save Results</button>
+         <button type="button" onclick="viewAllStudents()" class="bg-indigo-600 text-white text-sm rounded-lg px-3 py-2 hover:bg-indigo-700">View All Students</button>
+         <button type="button" onclick="clearCurrent()" class="bg-amber-600 text-white text-sm rounded-lg px-3 py-2 hover:bg-amber-700">Clear Current</button>
+         <button type="button" onclick="clearAll()" class="bg-rose-600 text-white text-sm rounded-lg px-3 py-2 hover:bg-rose-700">Clear All</button>
+         <div id="admin-notice" class="text-sm"></div>
+       </div>
+             <div class="overflow-x-auto mt-6 bg-slate-50 rounded-xl p-6 border border-slate-200">
+         <table id="results-table" class="w-full text-base text-left text-slate-600">
+           <thead class="text-sm text-slate-700 uppercase bg-white border-b-2 border-slate-300">
+             <tr>
+               <th class="p-6 text-center font-bold">Student Name</th>
+               <th class="p-6 text-center font-bold">Student ID</th>
+               <!-- Dynamic subject columns will be added here -->
+               <th class="p-6 text-center font-bold">Action</th>
+             </tr>
+             <tr class="text-xs text-slate-500 bg-slate-100">
+               <th class="p-4"></th>
+               <th class="p-4"></th>
+               <!-- Dynamic subject sub-headers will be added here -->
+               <th class="p-4"></th>
+             </tr>
+           </thead>
+           <tbody id="results-body"></tbody>
+         </table>
+       </div>
+             <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+         <p class="text-blue-800 text-sm font-medium">📝 <strong>Instructions:</strong> Enter internal and external marks (0-50 each) for each subject. The system will automatically calculate totals and update student/HOD dashboards.</p>
+       </div>
+    </section>
+
+         <!-- Students Display Section -->
+     <section id="students-display-section" class="bg-white rounded-2xl shadow-lg border border-slate-100 p-6" style="display: none;">
+       <div class="flex justify-between items-center mb-6">
+         <div>
+           <h2 class="text-slate-900 font-bold text-lg">All Students Database</h2>
+           <p class="text-slate-600 text-sm mt-1">Complete overview of all entered student details and results</p>
+         </div>
+         <button onclick="backToInput()" class="bg-slate-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-slate-700">
+           ← Back to Input
+         </button>
+       </div>
+       
+       <!-- Filter Controls -->
+       <div class="bg-slate-50 rounded-lg p-4 mb-6 border border-slate-200">
+         <h3 class="text-slate-800 font-semibold text-sm mb-3">Filter Students</h3>
+         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+           <div>
+             <label class="block text-xs font-medium text-slate-700 mb-1">Branch</label>
+             <select id="filter-branch" onchange="filterStudents()" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+               <option value="">All Branches</option>
+               <option value="CSE">CSE</option>
+               <option value="AIML">AIML</option>
+               <option value="AIDS">AIDS</option>
+               <option value="CSE Ethical Hacking">CSE Ethical Hacking</option>
+             </select>
+           </div>
+           <div>
+             <label class="block text-xs font-medium text-slate-700 mb-1">Year</label>
+             <select id="filter-year" onchange="filterStudents()" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+               <option value="">All Years</option>
+               <option value="1st Year">1st Year</option>
+               <option value="2nd Year">2nd Year</option>
+               <option value="3rd Year">3rd Year</option>
+               <option value="4th Year">4th Year</option>
+             </select>
+           </div>
+           <div>
+             <label class="block text-xs font-medium text-slate-700 mb-1">Batch</label>
+             <select id="filter-batch" onchange="filterStudents()" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+               <option value="">All Batches</option>
+               <option value="2025-2029">2025-2029</option>
+               <option value="2024-2028">2024-2028</option>
+               <option value="2023-2027">2023-2027</option>
+               <option value="2022-2026">2022-2026</option>
+               <option value="2021-2025">2021-2025</option>
+             </select>
+           </div>
+           <div class="flex items-end">
+             <button onclick="clearFilters()" class="w-full bg-gray-500 text-white text-sm rounded-lg px-3 py-2 hover:bg-gray-600">
+               Clear Filters
+             </button>
+           </div>
+         </div>
+       </div>
+       
+       <div id="all-students-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+         <!-- Student data will be loaded here -->
+       </div>
+     </section>
+
+     <!-- Import Section -->
+     <section id="import-section" class="bg-white rounded-2xl shadow-lg border border-slate-100 p-6" style="display: none;">
+       <div class="flex justify-between items-center mb-6">
+         <div>
+           <h2 class="text-slate-900 font-bold text-lg">Import Student Data</h2>
+           <p class="text-slate-600 text-sm mt-1">Import multiple students from CSV file</p>
+         </div>
+         <button onclick="backToInputFromImport()" class="bg-slate-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-slate-700">
+           ← Back to Input
+         </button>
+       </div>
+       
+       <div class="space-y-6">
+         <!-- Template Download -->
+         <div class="bg-slate-50 rounded-lg p-6 border border-slate-200">
+           <h3 class="text-slate-800 font-semibold text-lg mb-3">Step 1: Download Template</h3>
+           <p class="text-slate-600 text-sm mb-4">Download the CSV template to see the required format for importing student data.</p>
+           <button onclick="downloadTemplate()" class="bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700">
+             📥 Download CSV Template
+           </button>
+         </div>
+
+         <!-- File Upload -->
+         <div class="bg-slate-50 rounded-lg p-6 border border-slate-200">
+           <h3 class="text-slate-800 font-semibold text-lg mb-3">Step 2: Upload CSV File</h3>
+           <p class="text-slate-600 text-sm mb-4">Select your CSV file with student data. Make sure it follows the template format.</p>
+           <div class="flex items-center space-x-4">
+             <input type="file" id="csv-file" accept=".csv" onchange="handleFileImport(event)" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+           </div>
+           <p class="text-slate-500 text-xs mt-2">Supported format: CSV files only</p>
+         </div>
+
+         <!-- Instructions -->
+         <div class="bg-blue-50 rounded-lg p-6 border border-blue-200">
+           <h3 class="text-blue-800 font-semibold text-lg mb-3">📋 Import Instructions</h3>
+           <div class="text-blue-700 text-sm space-y-2">
+             <p>• <strong>CSV Format:</strong> Use comma-separated values</p>
+             <p>• <strong>Required Columns:</strong> Student Name, Student ID</p>
+             <p>• <strong>Marks:</strong> Internal and External marks for each subject (0-50 each)</p>
+             <p>• <strong>Subjects:</strong> Configure subjects for each branch/year combination</p>
+             <p>• <strong>After Import:</strong> Review the data and click "Save Results" to store</p>
+           </div>
+         </div>
+       </div>
+     </section>
+   </main>
+ </body>
+ </html>
+
+

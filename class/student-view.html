@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student View</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>body { font-family: 'Inter', sans-serif; }</style>
+  <script>
+    function loadStudentData() {
+      // Get the logged-in student's ID
+      const studentId = localStorage.getItem('studentId');
+      if (!studentId) {
+        console.error('Student ID not found. Please login again.');
+        return null;
+      }
+      
+      // Search through all admin data to find the specific student
+      let studentData = null;
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('admin_student_data_')) {
+          try {
+            const adminData = JSON.parse(localStorage.getItem(key));
+            if (adminData && adminData.students) {
+              // Find the specific student by ID
+              const student = adminData.students.find(s => s.student_id === studentId);
+              if (student) {
+                studentData = {
+                  name: student.student_name,
+                  id: student.student_id,
+                  marks: student,
+                  branch: adminData.branch,
+                  year: adminData.year || adminData.semester, // Handle both year and semester
+                  batch: adminData.batch
+                };
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing admin data:', e);
+          }
+        }
+      });
+      
+      return studentData;
+    }
+
+    function render(){
+      const student = loadStudentData();
+      
+             if (student) {
+         // Display student data
+         document.getElementById('student-name').textContent = student.name || 'Student Name';
+         document.getElementById('student-id').textContent = student.id || 'Student ID';
+         document.getElementById('student-branch').textContent = student.branch || 'Branch';
+         document.getElementById('student-year').textContent = student.year || 'Year';
+
+        // Calculate totals and status - get subjects dynamically from student data
+        const subjects = Object.keys(student.marks).filter(key => 
+          key !== 'student_name' && key !== 'student_id'
+        );
+        let totalScore = 0;
+        let passedSubjects = 0;
+        let failedSubjects = 0;
+        
+        const body = document.getElementById('subject-rows');
+        body.innerHTML = subjects.map(subject => {
+          const internal = parseInt(student.marks[subject]?.internal || 0);
+          const external = parseInt(student.marks[subject]?.external || 0);
+          const total = internal + external;
+          totalScore += total;
+          
+          const passed = external > 17; // Student passes only if external marks > 17
+          if (passed) passedSubjects++;
+          else failedSubjects++;
+          
+          const statusClass = passed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800';
+          const statusText = passed ? 'Passed' : 'Failed';
+          
+          return `
+            <tr class="hover:bg-slate-50 border-b border-slate-100">
+              <td class="p-3 font-medium text-slate-800">${subject.charAt(0).toUpperCase() + subject.slice(1)}</td>
+              <td class="p-3">
+                <span class="text-sm font-semibold px-2.5 py-1 rounded-md ${statusClass}">${total}/100</span>
+              </td>
+              <td class="p-3">
+                <span class="capitalize text-xs font-semibold px-2 py-1 rounded-md ${statusClass}">${statusText}</span>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        // Update summary cards
+        const overallPercentage = totalScore / (subjects.length * 100) * 100;
+        document.getElementById('overall-score').textContent = `${overallPercentage.toFixed(1)}%`;
+        
+        const statusEl = document.getElementById('overall-status');
+        const overallPassed = overallPercentage >= 60;
+        statusEl.textContent = overallPassed ? 'Passed' : 'Failed';
+        statusEl.className = `capitalize text-xs font-semibold px-2 py-1 rounded-md ${overallPassed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`;
+        
+        document.getElementById('passed-count').textContent = passedSubjects;
+        document.getElementById('failed-count').textContent = failedSubjects;
+             } else {
+         // Show empty state
+         document.getElementById('student-name').textContent = 'Student Name';
+         document.getElementById('student-id').textContent = 'Student ID';
+         document.getElementById('student-branch').textContent = 'Branch';
+         document.getElementById('student-year').textContent = 'Year';
+
+        document.getElementById('overall-score').textContent = '0%';
+        const statusEl = document.getElementById('overall-status');
+        statusEl.textContent = 'No Data';
+        statusEl.className = 'capitalize text-xs font-semibold px-2 py-1 rounded-md bg-gray-100 text-gray-800';
+        document.getElementById('passed-count').textContent = '0';
+        document.getElementById('failed-count').textContent = '0';
+
+        const body = document.getElementById('subject-rows');
+        body.innerHTML = '<tr><td colspan="3" class="p-8 text-center text-slate-500">No data available</td></tr>';
+      }
+
+      // HOD message form handler
+      const hodForm = document.getElementById('hod-form');
+      hodForm.addEventListener('submit', function(e){
+        e.preventDefault();
+        const msg = document.getElementById('hod-message').value.trim();
+        const notif = document.getElementById('hod-notice');
+        if(!msg){
+          notif.textContent = 'Please enter a message for HOD.';
+          notif.className = 'mt-3 text-sm text-rose-600';
+          return;
+        }
+        notif.textContent = 'Message sent to HOD successfully (mock).';
+        notif.className = 'mt-3 text-sm text-emerald-700';
+        hodForm.reset();
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', render);
+  </script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+  <header class="bg-white border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+      <h1 class="text-xl font-bold text-slate-900">Student Dashboard</h1>
+      <div class="space-x-4 text-sm">
+        <a href="index.html" class="text-slate-600 hover:underline">Switch Role</a>
+        <a href="login-student.html" class="text-blue-600 hover:underline">Logout</a>
+      </div>
+    </div>
+  </header>
+  <main class="max-w-6xl mx-auto px-6 py-8 space-y-6">
+    <section class="bg-white rounded-2xl shadow-lg border border-slate-100 p-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                 <div>
+           <h2 id="student-name" class="text-2xl font-extrabold text-slate-900">Student Name</h2>
+           <div class="mt-1 text-slate-600 text-sm">
+             <span>ID: <span id="student-id">SID</span></span>
+             <span class="mx-2">•</span>
+             <span>Branch: <span id="student-branch">Branch</span></span>
+             <span class="mx-2">•</span>
+             <span>Year: <span id="student-year">Year</span></span>
+           </div>
+         </div>
+        
+      </div>
+
+      <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+          <div class="text-xs text-slate-500">Overall Percentage</div>
+          <div id="overall-score" class="text-2xl font-bold text-slate-900 mt-1">0%</div>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+          <div class="text-xs text-slate-500">Overall Status</div>
+          <div class="mt-2"><span id="overall-status" class="capitalize text-xs font-semibold px-2 py-1 rounded-md">-</span></div>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+          <div class="text-xs text-slate-500">Passed Subjects</div>
+          <div id="passed-count" class="text-2xl font-bold text-slate-900 mt-1">0</div>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+          <div class="text-xs text-slate-500">Failed Subjects</div>
+          <div id="failed-count" class="text-2xl font-bold text-slate-900 mt-1">0</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-2xl shadow-lg border border-slate-100">
+      <div class="p-6 border-b border-slate-100">
+        <h3 class="text-slate-800 font-bold text-lg">Subject-wise Results</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left text-slate-600">
+          <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+            <tr>
+              <th class="p-3">Subject</th>
+              <th class="p-3">Score</th>
+              <th class="p-3">Status</th>
+            </tr>
+          </thead>
+          <tbody id="subject-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+
+
+    <section class="bg-white rounded-2xl shadow-lg border border-slate-100 p-6">
+      <h3 class="text-slate-800 font-bold text-lg">Message to HOD</h3>
+      <p class="text-slate-600 text-sm mt-1">If you need changes or have concerns, message your HOD.</p>
+      <form id="hod-form" class="mt-4 space-y-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Subject</label>
+          <input type="text" required class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="E.g., Re-evaluation request">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Message</label>
+          <textarea id="hod-message" required rows="4" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="Describe your request or issue"></textarea>
+        </div>
+        <button type="submit" class="bg-blue-600 text-white font-semibold rounded-lg px-4 py-2 hover:bg-blue-700">Send Message</button>
+        <div id="hod-notice" class="mt-3 text-sm"></div>
+      </form>
+    </section>
+
+    
+  </main>
+</body>
+</html>
+
+

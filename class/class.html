@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admissions Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+  <div id="loader" class="min-h-screen flex items-center justify-center">
+    <div class="text-center">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+      <p class="text-slate-600">Loading admissions analytics...</p>
+    </div>
+  </div>
+
+  <div id="dashboard-content" class="min-h-screen hidden">
+    <header class="bg-white border-b border-slate-200 shadow-sm">
+      <div class="max-w-7xl mx-auto px-6 py-8">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-4">
+            <div class="p-3 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl shadow-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+            </div>
+            <div>
+              <h1 class="text-3xl font-bold text-slate-900">Admissions Dashboard</h1>
+              <p class="text-slate-600 mt-1">Admissions View</p>
+            </div>
+          </div>
+          <a href="login.html" class="text-sm text-blue-600 hover:underline">Logout</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-8">
+      <div id="results-container" class="space-y-8">
+        <div id="overview-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+
+        <div id="charts-container" class="grid lg:grid-cols-2 gap-6">
+          <div class="shadow-lg border-0 bg-white rounded-xl">
+            <div class="p-6 border-b border-slate-100">
+              <h3 class="flex items-center gap-2 text-slate-800 font-bold text-lg">Subject-wise Pass Rate</h3>
+            </div>
+            <div class="p-6"><canvas id="subjectPerformanceChart"></canvas></div>
+          </div>
+          <div class="shadow-lg border-0 bg-white rounded-xl">
+            <div class="p-6 border-b border-slate-100">
+              <h3 class="flex items-center gap-2 text-slate-800 font-bold text-lg">Overall Class Performance</h3>
+            </div>
+            <div class="p-6"><canvas id="overallPerformanceChart"></canvas></div>
+          </div>
+          <div class="shadow-lg border-0 bg-white rounded-xl lg:col-span-2">
+            <div class="p-6 border-b border-slate-100">
+              <h3 class="flex items-center gap-2 text-slate-800 font-bold text-lg">Grade Distribution</h3>
+            </div>
+            <div class="p-6"><canvas id="gradeDistributionChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-8">
+          <div id="subject-analysis-container" class="lg:col-span-1"></div>
+          <div id="students-list-container" class="lg:col-span-2"></div>
+        </div>
+      </div>
+
+      <div id="empty-state" class="text-center py-20 hidden">
+        <div class="max-w-md mx-auto">
+          <div class="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6"></div>
+          <h3 class="text-xl font-semibold text-slate-900 mb-2">No Results Available</h3>
+          <p class="text-slate-600 mb-6">This dashboard is using mock data.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const PASSING_SCORE = 60;
+    const SUBJECTS = ['mathematics','english','science','history','geography'];
+    let studentResults = [];
+    let chartInstances = {};
+    const state = { searchTerm: "", statusFilter: "all", classFilter: "all" };
+
+    const loader = document.getElementById('loader');
+    const dashboardContent = document.getElementById('dashboard-content');
+    const overviewCardsContainer = document.getElementById('overview-cards-container');
+    const subjectAnalysisContainer = document.getElementById('subject-analysis-container');
+    const studentsListContainer = document.getElementById('students-list-container');
+
+    const API_BASE = 'http://localhost:3001/api';
+
+    function getContext(){
+      const p = new URLSearchParams(window.location.search);
+      return { branch: p.get('branch'), semester: p.get('semester'), batch: p.get('batch') };
+    }
+
+    function storageKey(ctx){
+      if(!ctx.branch || !ctx.semester || !ctx.batch) return null;
+      return `results_${ctx.branch}_${ctx.semester}_${ctx.batch}`;
+    }
+
+    function generateMockData(count){
+      const names = ["Liam","Olivia","Noah","Emma","Oliver","Ava","Elijah","Charlotte","William","Sophia"];
+      const last = ["Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis","Rodriguez","Martinez"];
+      const classes = ["Class 10A","Class 10B","Class 11A","Class 11B"];
+      const res = [];
+      for(let i=0;i<count;i++){
+        const s = { id:`stu_${1000+i}`, student_name:`${names[Math.floor(Math.random()*names.length)]} ${last[Math.floor(Math.random()*last.length)]}`, student_id:`SID${202400+i}`, class:classes[Math.floor(Math.random()*classes.length)] };
+        let total=0;
+        SUBJECTS.forEach(sub=>{ const score = Math.floor(Math.random()*61)+40; s[sub]=score; total+=score; });
+        s.overall_percentage = total/SUBJECTS.length;
+        s.status = s.overall_percentage>=60?'passed':'failed';
+        res.push(s);
+      }
+      return res;
+    }
+
+    async function loadResults(){
+      const ctx = getContext();
+      const key = storageKey(ctx);
+      if(!key){
+        return null;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/results?branch=${encodeURIComponent(ctx.branch)}&semester=${encodeURIComponent(ctx.semester)}&batch=${encodeURIComponent(ctx.batch)}`);
+        const parsed = await res.json();
+        if(!parsed || !Array.isArray(parsed.students)) return null;
+        const students = (parsed.students||[]).map(s=>{
+          const out = { id: s.student_id, student_name: s.student_name, student_id: s.student_id, class: s.class };
+          let total = 0;
+          SUBJECTS.forEach(sub=>{
+            const m = s[sub] || { internal:0, external:0 };
+            const score = Math.max(0, Math.min(100, (Number(m.internal)||0) + (Number(m.external)||0)));
+            out[sub] = score;
+            total += score;
+          });
+          out.overall_percentage = total / SUBJECTS.length;
+          out.status = out.overall_percentage>=PASSING_SCORE?'passed':'failed';
+          return out;
+        });
+        return students;
+      } catch (e) { return null; }
+    }
+
+    function renderOverviewCards(results){
+      const total=results.length;
+      const passed=results.filter(s=>s.status==='passed').length;
+      const failed=total-passed;
+      const passPct=total?((passed/total)*100).toFixed(1):0;
+      const avg=total?(results.reduce((a,s)=>a+s.overall_percentage,0)/total).toFixed(1):0;
+      overviewCardsContainer.innerHTML = `
+        <div class="relative overflow-hidden border-0 shadow-lg bg-white rounded-xl"><div class="p-6"><h3 class="text-sm text-slate-600">Total Students</h3><div class="text-3xl font-bold">${total}</div></div></div>
+        <div class="relative overflow-hidden border-0 shadow-lg bg-white rounded-xl"><div class="p-6"><h3 class="text-sm text-slate-600">Pass Rate</h3><div class="text-3xl font-bold">${passPct}%</div><p class="text-xs text-slate-500">${passed} passed</p></div></div>
+        <div class="relative overflow-hidden border-0 shadow-lg bg-white rounded-xl"><div class="p-6"><h3 class="text-sm text-slate-600">Failure Rate</h3><div class="text-3xl font-bold">${(100-passPct).toFixed(1)}%</div><p class="text-xs text-slate-500">${failed} failed</p></div></div>
+        <div class="relative overflow-hidden border-0 shadow-lg bg-white rounded-xl"><div class="p-6"><h3 class="text-sm text-slate-600">Average Score</h3><div class="text-3xl font-bold">${avg}%</div></div></div>
+      `;
+    }
+
+    function renderCharts(results){
+      const subjectData = SUBJECTS.map(sub=>{
+        const scores = results.map(s=>s[sub]).filter(v=>v!=null);
+        const passed = scores.filter(v=>v>=PASSING_SCORE).length;
+        return { subject: sub[0].toUpperCase()+sub.slice(1), passRate: (scores.length?passed*100/scores.length:0).toFixed(1) };
+      });
+      const passedCount = results.filter(s=>s.status==='passed').length;
+      const failedCount = results.length - passedCount;
+      chartInstances.subject && chartInstances.subject.destroy();
+      chartInstances.overall && chartInstances.overall.destroy();
+      chartInstances.grade && chartInstances.grade.destroy();
+
+      chartInstances.subject = new Chart(document.getElementById('subjectPerformanceChart'), {
+        type:'bar',
+        data:{ labels:subjectData.map(d=>d.subject), datasets:[{ label:'Pass Rate (%)', data:subjectData.map(d=>d.passRate), backgroundColor:'#3b82f6', borderRadius:4 }]},
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } } }
+      });
+
+      chartInstances.overall = new Chart(document.getElementById('overallPerformanceChart'), {
+        type:'doughnut',
+        data:{ labels:['Passed','Failed'], datasets:[{ data:[passedCount,failedCount], backgroundColor:['#10b981','#ef4444'], borderColor:'#fff', borderWidth:4 }]},
+        options:{ responsive:true, plugins:{ legend:{ display:true, position:'bottom' } } }
+      });
+
+      const ranges=[['90-100',90,100,'#10b981'],['80-89',80,89,'#3b82f6'],['70-79',70,79,'#f59e0b'],['60-69',60,69,'#f97316'],['< 60',0,59,'#ef4444']];
+      const dist=ranges.map(r=>({range:r[0], count:results.filter(s=>s.overall_percentage>=r[1] && s.overall_percentage<=r[2]).length, color:r[3]}));
+      chartInstances.grade = new Chart(document.getElementById('gradeDistributionChart'), {
+        type:'bar',
+        data:{ labels:dist.map(d=>d.range), datasets:[{ label:'Number of Students', data:dist.map(d=>d.count), backgroundColor:dist.map(d=>d.color), borderRadius:4 }]},
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } } }
+      });
+    }
+
+    function renderSubjectAnalysis(results){
+      const PASS=PASSING_SCORE;
+      const SUBJECTS_LOCAL=[...SUBJECTS];
+      const stats = SUBJECTS_LOCAL.map(sub=>{
+        const scores = results.map(s=>s[sub]).filter(v=>v!=null);
+        const total = scores.length;
+        const passed = scores.filter(v=>v>=PASS).length;
+        const passRate = total? (passed*100/total):0;
+        const failRate = 100-passRate;
+        const avg = total? scores.reduce((a,b)=>a+b,0)/total : 0;
+        return { name:sub, passRate, failRate, average:avg };
+      }).sort((a,b)=>b.failRate-a.failRate);
+      subjectAnalysisContainer.innerHTML = `
+        <div class="shadow-lg border-0 bg-white rounded-xl">
+          <div class="p-6 border-b border-slate-100"><h3 class="text-slate-800 font-bold text-lg">Subject-wise Analysis</h3></div>
+          <div class="p-6 space-y-4">
+            ${stats.map(s=>`
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-3">
+                    <h4 class="font-semibold text-slate-800 capitalize">${s.name}</h4>
+                    <span class="text-xs font-medium px-2 py-0.5 rounded-full ${s.failRate>50?'bg-rose-100 text-rose-800 border-rose-200':s.failRate>30?'bg-yellow-100 text-yellow-800 border-yellow-200':'bg-emerald-100 text-emerald-800 border-emerald-200'}">${s.failRate.toFixed(1)}% Failed</span>
+                  </div>
+                  <div class="text-xl font-bold text-slate-900">${s.average.toFixed(1)}%</div>
+                </div>
+                <div class="w-full bg-slate-200 rounded-full h-2"><div class="bg-emerald-500 h-2 rounded-full" style="width:${s.passRate}%"></div></div>
+              </div>
+            `).join('')}
+          </div>
+        </div>`;
+    }
+
+    function renderStudentsList(results){
+      const getGradeColor = score => score>=90?"bg-emerald-100 text-emerald-800":score>=80?"bg-blue-100 text-blue-800":score>=70?"bg-yellow-100 text-yellow-800":score>=60?"bg-orange-100 text-orange-800":"bg-rose-100 text-rose-800";
+      const classes = [...new Set(studentResults.map(s=>s.class))].sort();
+      const rows = results.map(student=>`
+        <tr class="hover:bg-slate-50 border-b border-slate-100">
+          <td class="p-3"><div class="font-semibold text-slate-800">${student.student_name}</div><div class="text-sm text-slate-500">ID: ${student.student_id}</div></td>
+          <td class="p-3"><span class="text-xs font-medium px-2 py-1 rounded-md bg-slate-100 text-slate-700">${student.class}</span></td>
+          ${SUBJECTS.map(sub=>`<td class="p-3 text-center"><span class="font-semibold text-sm px-2.5 py-1 rounded-md ${getGradeColor(student[sub])}">${student[sub]}</span></td>`).join('')}
+          <td class="p-3 text-center font-bold text-slate-800">${student.overall_percentage.toFixed(1)}%</td>
+          <td class="p-3"><span class="font-semibold text-xs capitalize px-2 py-1 rounded-md ${student.status==='passed'?'bg-emerald-100 text-emerald-800':'bg-rose-100 text-rose-800'}">${student.status}</span></td>
+        </tr>
+      `).join('');
+      document.getElementById('students-list-container').innerHTML = `
+        <div class="shadow-lg border-0 bg-white rounded-xl overflow-hidden">
+          <div class="p-6 border-b border-slate-100">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+              <h3 class="text-slate-800 font-bold text-lg">Students Performance (${results.length})</h3>
+              <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                <div class="relative w-full sm:w-auto">
+                  <input id="search-input" type="text" placeholder="Search students..." class="pl-10 pr-4 py-2 border border-slate-300 rounded-lg w-full sm:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                </div>
+                <select id="status-filter" class="w-full sm:w-32 border border-slate-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"><option value="all">All Status</option><option value="passed">Passed</option><option value="failed">Failed</option></select>
+                <select id="class-filter" class="w-full sm:w-32 border border-slate-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                  <option value="all">All Classes</option>${classes.map(c=>`<option value="${c}">${c}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="overflow-x-auto max-h-96 overflow-y-auto">
+            <table class="w-full text-sm text-left text-slate-600 min-w-full">
+              <thead class="text-xs text-slate-700 uppercase bg-slate-50 sticky top-0">
+                <tr>
+                  <th class="p-3 min-w-48">Student</th>
+                  <th class="p-3 min-w-24">Class</th>
+                  ${SUBJECTS.map(s=>`<th class="p-3 text-center capitalize min-w-20">${s}</th>`).join('')}
+                  <th class="p-3 text-center min-w-20">Overall</th>
+                  <th class="p-3 min-w-20">Status</th>
+                </tr>
+              </thead>
+              <tbody id="students-table-body">${rows}</tbody>
+            </table>
+          </div>
+        </div>`;
+      document.getElementById('search-input').addEventListener('input', handleFilterChange);
+      document.getElementById('status-filter').addEventListener('change', handleFilterChange);
+      document.getElementById('class-filter').addEventListener('change', handleFilterChange);
+    }
+
+    function filterAndRender(){
+      const search = state.searchTerm;
+      const filtered = studentResults.filter(s=>{
+        const matchesSearch = s.student_name.toLowerCase().includes(search) || s.student_id.toLowerCase().includes(search);
+        const matchesStatus = state.statusFilter==='all' || s.status===state.statusFilter;
+        const matchesClass = state.classFilter==='all' || s.class===state.classFilter;
+        return matchesSearch && matchesStatus && matchesClass;
+      });
+      renderStudentsList(filtered);
+    }
+
+    function handleFilterChange(){
+      const si = document.getElementById('search-input');
+      const sf = document.getElementById('status-filter');
+      const cf = document.getElementById('class-filter');
+      state.searchTerm = si.value.toLowerCase();
+      state.statusFilter = sf.value;
+      state.classFilter = cf.value;
+      filterAndRender();
+    }
+
+    async function init(){
+      studentResults = await loadResults() || generateMockData(50);
+      renderOverviewCards(studentResults);
+      renderCharts(studentResults);
+      renderSubjectAnalysis(studentResults);
+      filterAndRender();
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      setTimeout(()=>{
+        init();
+        loader.style.display='none';
+        dashboardContent.classList.remove('hidden');
+      }, 700);
+    });
+  </script>
+</body>
+</html>

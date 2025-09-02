@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HOD: Select Branch & Year</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>body { font-family: 'Inter', sans-serif; }</style>
+  <script>
+    function guard(){
+      try {
+        const role = localStorage.getItem('role');
+        if(role !== 'hod'){
+          window.location.replace('index.html');
+        }
+        const hodBranch = localStorage.getItem('hodBranch');
+        const branchSelect = document.getElementById('branch');
+        if(hodBranch && branchSelect){
+          branchSelect.value = hodBranch;
+          branchSelect.disabled = true;
+          branchSelect.classList.add('bg-slate-100','text-slate-500','cursor-not-allowed');
+        }
+      } catch (e) {}
+    }
+    function handleContinue(e){
+      e.preventDefault();
+      const year = document.getElementById('year').value;
+      const batch = document.getElementById('batch').value;
+      
+      // Debug: Log the selected values
+      console.log('HOD Select - Selected values:', { year, batch });
+      
+      if(!year || !batch){ return; }
+      
+      // Get HOD's branch from localStorage
+      const hodBranch = localStorage.getItem('hodBranch');
+      if (!hodBranch) {
+        alert('HOD branch not found. Please login again.');
+        return;
+      }
+      
+      const params = new URLSearchParams({ branch: hodBranch, year, batch });
+      console.log('HOD Select - Redirecting to:', `hod-view.html?${params.toString()}`);
+      window.location.href = `hod-view.html?${params.toString()}`;
+    }
+    document.addEventListener('DOMContentLoaded', guard);
+  </script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+  <div class="max-w-xl mx-auto px-6 py-16">
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-100 p-8">
+      <h1 class="text-2xl font-extrabold text-slate-900">Select Branch & Year</h1>
+      <p class="text-slate-600 mt-1">Choose the dashboard you want to view</p>
+      <form class="mt-6 space-y-4" onsubmit="handleContinue(event)">
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Branch</label>
+          <select id="branch" required class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            <option value="">Select</option>
+            <option>ECE</option>
+            <option>CSE</option>
+            <option>EEE</option>
+            <option>MECH</option>
+            <option>CIVIL</option>
+            <option>AIML</option>
+            <option>AIDS</option>
+            <option>CSE Ethical Hacking</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Year</label>
+            <select id="year" required class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+              <option value="">Select</option>
+              <option value="1st Year">1st Year</option>
+              <option value="2nd Year">2nd Year</option>
+              <option value="3rd Year">3rd Year</option>
+              <option value="4th Year">4th Year</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Batch</label>
+            <select id="batch" required class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+              <option value="">Select</option>
+              <option>2023-2027</option>
+              <option>2022-2026</option>
+              <option>2021-2025</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="w-full bg-indigo-600 text-white font-semibold rounded-lg py-2.5 hover:bg-indigo-700">Continue</button>
+      </form>
+      <div class="mt-4 text-sm text-center"><a href="index.html" class="text-blue-600 hover:underline">Back</a></div>
+    </div>
+  </div>
+</body>
+</html>
+
+
