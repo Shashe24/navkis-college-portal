@@ -1,16 +1,19 @@
 {
-  "name": "class-dashboard-backend",
+  "name": "student-portal-backend",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "start": "node server/server.js",
-    "dev": "node server/server.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "body-parser": "^2.2.0",
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2"
   }
 }
-
-
